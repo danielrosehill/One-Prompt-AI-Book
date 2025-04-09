@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Updated Analysis Script for Gemini 2.5 Max Output Tokens Test
+Updated Analysis Script for LLM Output Capacity Test
 
-This script calculates the percentage of words achieved compared to the 40,000 word target
-and finds public domain books with similar word counts to the AI outputs for comparison.
+This script analyzes the outputs from different LLMs and compares them to:
+1. The 40,000 word target from the prompt
+2. The claimed maximum token capacities for each model
 """
 
 import os
-import re
 import matplotlib.pyplot as plt
 from token_estimator import estimate_tokens_for_file
 
@@ -24,6 +24,12 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Target word count from the prompt
 TARGET_WORD_COUNT = 40000
+
+# Claimed maximum token capacities for each model
+MODEL_MAX_TOKENS = {
+    'gemini': 65536,  # Gemini 2.5 Pro
+    'anthropic': 128000  # Claude 3 Opus
+}
 
 # Public domain books with word counts (for comparison)
 BOOKS = [
@@ -87,7 +93,7 @@ def create_target_percentage_chart(token_data, output_path):
     plt.figure(figsize=(12, 7))
     
     # Data for chart
-    sources = ['AI Studio', 'Script', 'Anthropic']
+    sources = ['AI Studio (Gemini)', 'Script (Gemini)', 'Anthropic (Claude)']
     word_counts = [
         token_data['ai_studio']['word_count'], 
         token_data['script']['word_count'],
@@ -98,7 +104,7 @@ def create_target_percentage_chart(token_data, output_path):
     percentages = [(count / TARGET_WORD_COUNT) * 100 for count in word_counts]
     
     # Create bar chart with different colors
-    bars = plt.bar(sources, percentages, color=['#4285F4', '#34A853', '#EA4335'])
+    plt.bar(sources, percentages, color=['#4285F4', '#34A853', '#EA4335'])
     
     # Add 100% reference line
     plt.axhline(y=100, color='#FBBC05', linestyle='-', 
@@ -110,10 +116,10 @@ def create_target_percentage_chart(token_data, output_path):
     plt.title(f'Percentage of Target Word Count ({TARGET_WORD_COUNT:,} words) Achieved')
     
     # Add value labels on bars
-    for i, bar in enumerate(bars):
-        height = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width()/2., height + 2,
-                f'{height:.1f}%\n({word_counts[i]:,} words)',
+    for i, count in enumerate(word_counts):
+        height = (count / TARGET_WORD_COUNT) * 100
+        plt.text(i, height + 2,
+                f'{height:.1f}%\n({count:,} words)',
                 ha='center', va='bottom', fontweight='bold')
     
     plt.legend()
@@ -138,11 +144,11 @@ def create_book_comparison_chart(token_data, output_path):
     
     # Data for chart
     labels = [
-        f"AI Studio\n({token_data['ai_studio']['word_count']:,})",
+        f"AI Studio (Gemini)\n({token_data['ai_studio']['word_count']:,})",
         f"{ai_studio_closest['title']}\n({ai_studio_closest['word_count']:,})",
-        f"Script\n({token_data['script']['word_count']:,})",
+        f"Script (Gemini)\n({token_data['script']['word_count']:,})",
         f"{script_closest['title']}\n({script_closest['word_count']:,})",
-        f"Anthropic\n({token_data['anthropic']['word_count']:,})",
+        f"Anthropic (Claude)\n({token_data['anthropic']['word_count']:,})",
         f"{anthropic_closest['title']}\n({anthropic_closest['word_count']:,})"
     ]
     
@@ -159,7 +165,7 @@ def create_book_comparison_chart(token_data, output_path):
     colors = ['#4285F4', '#AAAAAA', '#34A853', '#AAAAAA', '#EA4335', '#AAAAAA']
     
     # Create bar chart
-    bars = plt.bar(labels, word_counts, color=colors)
+    plt.bar(labels, word_counts, color=colors)
     
     # Add labels and title
     plt.xlabel('Output / Book')
@@ -175,6 +181,57 @@ def create_book_comparison_chart(token_data, output_path):
     plt.savefig(output_path)
     plt.close()
 
+def create_token_capacity_chart(token_data, output_path):
+    """
+    Create a bar chart showing percentage of claimed token capacity used.
+    
+    Args:
+        token_data (dict): Dictionary containing the token data
+        output_path (str): Path to save the chart
+    """
+    plt.figure(figsize=(12, 7))
+    
+    # Data for chart
+    sources = ['AI Studio (Gemini)', 'Script (Gemini)', 'Anthropic (Claude)']
+    token_counts = [
+        token_data['ai_studio']['original_token_count'],
+        token_data['script']['original_token_count'],
+        token_data['anthropic']['original_token_count']
+    ]
+    
+    # Map each source to its model
+    model_map = {
+        'AI Studio (Gemini)': 'gemini',
+        'Script (Gemini)': 'gemini',
+        'Anthropic (Claude)': 'anthropic'
+    }
+    
+    # Calculate percentages of claimed capacity
+    percentages = [
+        (token_counts[i] / MODEL_MAX_TOKENS[model_map[sources[i]]]) * 100 
+        for i in range(len(sources))
+    ]
+    
+    # Create bar chart with different colors
+    plt.bar(sources, percentages, color=['#4285F4', '#34A853', '#EA4335'])
+    
+    # Add labels and title
+    plt.xlabel('Source')
+    plt.ylabel('Percentage of Claimed Token Capacity (%)')
+    plt.title('Percentage of Claimed Maximum Token Capacity Used')
+    
+    # Add value labels on bars
+    for i, count in enumerate(token_counts):
+        height = (count / MODEL_MAX_TOKENS[model_map[sources[i]]]) * 100
+        model = model_map[sources[i]]
+        plt.text(i, height + 2,
+                f'{height:.1f}%\n({count:,}/{MODEL_MAX_TOKENS[model]:,} tokens)',
+                ha='center', va='bottom', fontweight='bold')
+    
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()
+
 def main():
     """Main function to run the analysis"""
     print("UPDATED ANALYSIS:")
@@ -185,12 +242,28 @@ def main():
     
     # Print percentage of target achieved
     print(f"Target Word Count: {TARGET_WORD_COUNT:,}")
-    print("\nPercentage of Target Achieved:")
+    print("\nPercentage of Target Word Count Achieved:")
     print("-" * 80)
     
     for name, data in token_data.items():
         percentage = (data['word_count'] / TARGET_WORD_COUNT) * 100
-        print(f"{name.title()}: {data['word_count']:,} words ({percentage:.2f}%)")
+        print(f"{name.title()}: {data['word_count']:,} words ({percentage:.2f}% of target)")
+    
+    # Print percentage of claimed token capacity used
+    print("\nPercentage of Claimed Token Capacity Used:")
+    print("-" * 80)
+    
+    model_map = {
+        'ai_studio': 'gemini',
+        'script': 'gemini',
+        'anthropic': 'anthropic'
+    }
+    
+    for name, data in token_data.items():
+        model = model_map[name]
+        token_percentage = (data['original_token_count'] / MODEL_MAX_TOKENS[model]) * 100
+        print(f"{name.title()}: {data['original_token_count']:,} tokens " +
+              f"({token_percentage:.2f}% of {MODEL_MAX_TOKENS[model]:,} claimed tokens)")
     
     # Find closest books for comparison
     print("\nSimilar Public Domain Books:")
@@ -209,10 +282,12 @@ def main():
     # Generate charts
     create_target_percentage_chart(token_data, os.path.join(OUTPUT_DIR, 'target_percentage.png'))
     create_book_comparison_chart(token_data, os.path.join(OUTPUT_DIR, 'similar_books_comparison.png'))
+    create_token_capacity_chart(token_data, os.path.join(OUTPUT_DIR, 'token_capacity.png'))
     
     print("\nCharts generated:")
     print(f"  - {os.path.join(OUTPUT_DIR, 'target_percentage.png')}")
     print(f"  - {os.path.join(OUTPUT_DIR, 'similar_books_comparison.png')}")
+    print(f"  - {os.path.join(OUTPUT_DIR, 'token_capacity.png')}")
 
 if __name__ == "__main__":
     main()
